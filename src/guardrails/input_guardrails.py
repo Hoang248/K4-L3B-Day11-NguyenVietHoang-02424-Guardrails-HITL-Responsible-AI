@@ -11,6 +11,7 @@ Status convention (không dùng True/False mơ hồ):
 from __future__ import annotations
 
 import re
+import unicodedata
 from typing import Literal
 
 from google.genai import types
@@ -51,14 +52,39 @@ def detect_injection(user_input: str) -> InputStatus:
     Returns:
         ``"BLOCK"`` if injection detected (chặn), ``"ALLOW"`` otherwise (cho qua).
     """
+    # Normalize invisible separators before matching.  Retrieved email/RAG text is
+    # still untrusted data, so an instruction embedded in it must not become an
+    # instruction for the assistant.  Removing only formatting characters keeps
+    # ordinary external banking content (for example, a transfer-delay email)
+    # allowed when it contains no override request.
+    normalized = unicodedata.normalize("NFKC", user_input or "")
+    normalized = normalized.translate(
+        str.maketrans("", "", "\u200b\u200c\u200d\ufeff\u2060")
+    )
+    normalized = re.sub(r"\s+", " ", normalized).strip()
+
     INJECTION_PATTERNS = [
-        # TODO: Add at least 5 regex patterns
-        # Example:
-        # r"ignore (all )?(previous|above) instructions",
+        r"ignore\s+(?:all\s+)?(?:previous|above|prior)\s+instructions?",
+        r"disregard\s+(?:all\s+)?(?:previous|above|prior)\s+(?:instructions?|rules?)",
+        r"forget\s+(?:your\s+)?(?:instructions?|rules?|prompt)",
+        r"override\s+(?:your\s+)?(?:system\s+)?(?:prompt|instructions?)",
+        r"\byou\s+are\s+now\b",
+        r"\bsystem\s+prompt\b",
+        r"(?:reveal|disclose|show|share)\s+(?:your\s+)?(?:instructions?|prompt|config|secrets?|password|api\s*key)",
+        r"\breveal\b.*\b(?:password|api\s*key|credential|secret)\b",
+        r"pretend\s+(?:you\s+are|to\s+be)\b",
+        r"act\s+as\s+(?:an?\s+)?(?:unrestricted|unfiltered|jailbroken|evil)\b",
+        r"\b(?:DAN|jailbreak)\b",
+        r"(?:translate|encode|summarize|output)\s+(?:your\s+)?(?:system\s+prompt|instructions?|config|credentials?)",
+        r"(?:what\s+is|give|tell|provide)\s+(?:the\s+)?(?:admin\s+)?password\b",
+        r"(?:what\s+is|give|tell|provide)\s+(?:the\s+)?api\s*key\b",
+        r"bỏ\s+qua\s+(?:mọi\s+)?hướng\s+dẫn",
+        r"tiết\s+lộ\s+(?:mật\s+khẩu|api|system\s*prompt|thông\s+tin\s+nội\s+bộ)",
+        r"bạn\s+là\s+DAN\b",
     ]
 
     for pattern in INJECTION_PATTERNS:
-        if re.search(pattern, user_input, re.IGNORECASE):
+        if re.search(pattern, normalized, re.IGNORECASE):
             return "BLOCK"
     return "ALLOW"
 
@@ -84,14 +110,16 @@ def topic_filter(user_input: str) -> InputStatus:
         ``"BLOCK"`` = chặn (off-topic hoặc topic cấm).
         ``"ALLOW"`` = cho qua (câu banking hợp lệ).
     """
-    input_lower = user_input.lower()
+    normalized = unicodedata.normalize("NFKC", user_input or "")
+    normalized = re.sub(r"\s+", " ", normalized).strip().casefold()
 
-    # TODO: Implement logic:
-    # 1. If input contains any blocked topic -> return "BLOCK"
-    # 2. If input doesn't contain any allowed topic -> return "BLOCK"
-    # 3. Otherwise -> return "ALLOW"
-
-    pass  # Replace with your implementation
+    if not normalized:
+        return "BLOCK"
+    if any(topic.casefold() in normalized for topic in BLOCKED_TOPICS):
+        return "BLOCK"
+    if not any(topic.casefold() in normalized for topic in ALLOWED_TOPICS):
+        return "BLOCK"
+    return "ALLOW"
 
 
 # ============================================================
@@ -144,14 +172,20 @@ class InputGuardrailPlugin(base_plugin.BasePlugin):
         self.total_count += 1
         text = self._extract_text(user_message)
 
-        # TODO: Implement logic:
-        # 1. Call detect_injection(text)
-        #    - If "BLOCK": increment blocked_count, return self._block_response("...")
-        # 2. Call topic_filter(text)
-        #    - If "BLOCK": increment blocked_count, return self._block_response("...")
-        # 3. If both return "ALLOW": return None (let message through)
+        if detect_injection(text) == "BLOCK":
+            self.blocked_count += 1
+            return self._block_response(
+                "I cannot process instruction-override or credential requests. "
+                "I can only help with safe VinBank banking questions."
+            )
 
-        pass  # Replace with your implementation
+        if topic_filter(text) == "BLOCK":
+            self.blocked_count += 1
+            return self._block_response(
+                "I am a VinBank assistant and can only help with banking-related questions."
+            )
+
+        return None
 
 
 # ============================================================

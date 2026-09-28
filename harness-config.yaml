@@ -1,0 +1,30 @@
+schema_version: 1
+project:
+  name: "K4-L3B-Day11-NguyenVietHoang-02424-Guardrails-HITL-Responsible-AI"
+  owner: "Nguyen Viet Hoang"
+  status: "validated_pending_owner_submission"
+  current_gate: "G4"
+paths:
+  repo_root: "C:/Users/LENOVO/K4-L3B-Day11-NguyenVietHoang-02424-Guardrails-HITL-Responsible-AI"
+  external_workspace: "NONE"
+  raw_data: "data/protected/"
+  review_data: "outputs/"
+  generated_outputs: "outputs/"
+roles:
+  coordinator: "Nguyen Viet Hoang"
+  scope: "Nguyen Viet Hoang"
+  builder: "Nguyen Viet Hoang"
+  reviewer: "Nguyen Viet Hoang"
+  optional_specialist: null
+policies:
+  raw_inputs_immutable: true
+  pending_is_fail_closed: true
+  human_domain_approval_required: false
+  linear_mutation_default: false
+  one_writer_per_artifact: true
+  reprocess_full_raw_dataset_by_default: false
+artifacts:
+  input_snapshot: "6b3ea99b2988d89fc2fac89d60787054d80864b7 + working tree validation 2026-09-28"
+  current_plan: "COORDINATION.md"
+  decision_log: "docs/DECISION_LOG.md"
+  quality_gates: "QUALITY_GATES.md"
